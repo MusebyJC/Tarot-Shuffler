@@ -14,13 +14,13 @@ import startLottieUrl from './assets/animation/screen_control/start_screen/start
 // Loading gifs (random)
 const LOADING_GIFS = import.meta.glob('./assets/animation/loading/*.gif', { eager: true, query: '?url', import: 'default' });
 const CARD_TAKE_AWAY_DURATION_MS = 460;
-const LOADING_SCREEN_DURATION_MS = 1800;
+const LOADING_SCREEN_DURATION_MS = 2400;
+const MAX_GRID_PICK_CARDS = 20;
 
 // Screen control Lotties
 const ICONS = {
   start_screen: {
     next_arrow_deck_picker: new URL('./assets/animation/screen_control/start_screen/next_arrow_deck_picker/31-arrow-right-outline.json', import.meta.url).toString(),
-    back_arrow_count_picker: new URL('./assets/animation/screen_control/start_screen/back_arrow_count_picker/32-arrow-left-outline.json', import.meta.url).toString(),
   },
   result_screen: {
     copy_spread: new URL('./assets/animation/screen_control/result_screen/copy_spread/60-documents-outline.json', import.meta.url).toString(),
@@ -86,7 +86,11 @@ async function mountLottieLoop(container, jsonUrl, { sizePx = 24, colorHex = '#f
   });
 }
 
-async function mountLottieInteractive(container, jsonUrl, { sizePx = 24, colorHex = '#ffd36a' } = {}) {
+async function mountLottieInteractive(
+  container,
+  jsonUrl,
+  { sizePx = 24, colorHex = '#ffd36a', restAtEnd = false, playReversed = false } = {}
+) {
   const anim = await mountLottieLoop(container, jsonUrl, {
     sizePx,
     colorHex,
@@ -94,7 +98,15 @@ async function mountLottieInteractive(container, jsonUrl, { sizePx = 24, colorHe
     autoplay: false
   });
 
-  anim.goToAndStop(0, true);
+  const lastFrame = () => Math.max(0, Math.floor((anim.totalFrames || 1) - 1));
+  const setRestFrame = () => anim.goToAndStop(restAtEnd ? lastFrame() : 0, true);
+
+  setRestFrame();
+
+  anim.addEventListener('complete', () => {
+    anim.stop();
+    setRestFrame();
+  });
 
   const host = container.closest('button') || container;
   let lastTriggerTs = 0;
@@ -104,6 +116,13 @@ async function mountLottieInteractive(container, jsonUrl, { sizePx = 24, colorHe
     if (now - lastTriggerTs < 100) return;
     lastTriggerTs = now;
     anim.stop();
+    if (playReversed) {
+      anim.setDirection(-1);
+      anim.goToAndStop(lastFrame(), true);
+    } else {
+      anim.setDirection(1);
+      anim.goToAndStop(0, true);
+    }
     anim.play();
   };
 
@@ -234,18 +253,6 @@ function setupPickerLogo() {
 }
 
 function mountPickerControlLotties() {
-  const next = document.getElementById('iconNextDeck');
-  if (next) {
-    mountLottieInteractive(next, ICONS.start_screen.next_arrow_deck_picker, { sizePx: 28, colorHex: '#ffd36a' })
-      .catch(() => {});
-  }
-
-  const back = document.getElementById('iconBackCount');
-  if (back) {
-    mountLottieInteractive(back, ICONS.start_screen.back_arrow_count_picker, { sizePx: 28, colorHex: '#9b5cff' })
-      .catch(() => {});
-  }
-
   const start = document.getElementById('iconStartDraw');
   if (start) {
     mountLottieInteractive(start, startLottieUrl, { sizePx: 28, colorHex: '#1d1300' })
@@ -274,7 +281,7 @@ function stepActiveWheel(delta) {
 }
 
 const LOCAL_ASSETS = import.meta.glob(
-  './assets/decks/**/{thumb.{jpg,jpeg,png,JPG,JPEG,PNG},back.{jpg,jpeg,png,JPG,JPEG,PNG},image/*.{jpg,jpeg,png,JPG,JPEG,PNG},images/*.{jpg,jpeg,png,JPG,JPEG,PNG}}',
+  './assets/decks/**/{thumb.{jpg,jpeg,png,webp,JPG,JPEG,PNG,WEBP},back,back.{jpg,jpeg,png,webp,JPG,JPEG,PNG,WEBP},image/*.{jpg,jpeg,png,webp,JPG,JPEG,PNG,WEBP},images/*.{jpg,jpeg,png,webp,JPG,JPEG,PNG,WEBP}}',
   { eager: true, query: '?url', import: 'default' }
 );
 
@@ -286,15 +293,20 @@ function localAsset(path) {
 function deckThumb(deckId) {
   return (
     localAsset(`./assets/decks/${deckId}/thumb.jpg`) ||
-    localAsset(`./assets/decks/${deckId}/thumb.png`)
+    localAsset(`./assets/decks/${deckId}/thumb.jpeg`) ||
+    localAsset(`./assets/decks/${deckId}/thumb.png`) ||
+    localAsset(`./assets/decks/${deckId}/thumb.webp`)
   );
 }
 
 function deckBack(deckId) {
   return (
+    localAsset(`./assets/decks/${deckId}/back`) ||
     localAsset(`./assets/decks/${deckId}/back.jpg`) ||
     localAsset(`./assets/decks/${deckId}/back.jpeg`) ||
-    localAsset(`./assets/decks/${deckId}/back.png`)
+    localAsset(`./assets/decks/${deckId}/back.png`) ||
+    localAsset(`./assets/decks/${deckId}/back.webp`) ||
+    deckThumb(deckId)
   );
 }
 
@@ -309,7 +321,7 @@ function deckCardImage(deckId, idx) {
     `./assets/decks/${deckId}/images/${n2}`,
   ];
 
-  const exts = ['.jpg', '.jpeg', '.png', '.JPG', '.JPEG', '.PNG'];
+  const exts = ['.jpg', '.jpeg', '.png', '.webp', '.JPG', '.JPEG', '.PNG', '.WEBP'];
 
   for (const b of bases) {
     for (const e of exts) {
@@ -455,11 +467,9 @@ let currentDeckIdx = 0;
 let fullDeck = [];
 let shuffledDeck = [];
 let drawnCards = [];
-let pullCount = 3;
 let viewIndex = 0;
 let screen = 'picker'; // picker | grid | loading | spread | card
 
-const PULL_OPTIONS = Array.from({ length: 20 }, (_, i) => i + 1); // 1..20
 const app = document.getElementById('app');
 
 // ------------------------------------------------------------
@@ -516,6 +526,38 @@ function showToast(msg) {
   showToast._t = setTimeout(() => el.classList.remove('show'), 1400);
 }
 
+function triggerTapFeedback(el) {
+  if (!el) return;
+  el.classList.remove('tap-feedback');
+  void el.offsetWidth;
+  el.classList.add('tap-feedback');
+}
+
+function bindButtonAction(buttonEl, action, delayMs = 120) {
+  if (!buttonEl) return;
+  let busy = false;
+
+  buttonEl.addEventListener('click', () => {
+    if (buttonEl.disabled || busy) return;
+    busy = true;
+    triggerTapFeedback(buttonEl);
+
+    const run = async () => {
+      try {
+        await action();
+      } finally {
+        if (document.contains(buttonEl)) busy = false;
+      }
+    };
+
+    if (delayMs > 0) {
+      setTimeout(() => { void run(); }, delayMs);
+    } else {
+      void run();
+    }
+  });
+}
+
 // ------------------------------------------------------------
 // FALLBACK SYMBOLS
 // ------------------------------------------------------------
@@ -542,7 +584,6 @@ async function init() {
   const session = await loadSession();
   if (session && session.deckIdx !== undefined && DECK_LIST[session.deckIdx]) {
     currentDeckIdx = session.deckIdx;
-    pullCount = session.pullCount || 3;
     if (session.drawnCards && session.drawnCards.length > 0) {
       drawnCards = session.drawnCards;
       viewIndex = session.viewIndex || 0;
@@ -555,19 +596,15 @@ async function init() {
 }
 
 // ------------------------------------------------------------
-// TWO-STEP PICKER FLOW (Deck -> Count)
+// PICKER FLOW (Deck -> Start Draw)
 // ------------------------------------------------------------
-let pickerStep = 0; // 0 = deck, 1 = count
-
 function renderPicker() {
   screen = 'picker';
-  pickerStep = 0;
   renderPickerDeck();
 }
 
 function renderPickerDeck() {
   screen = 'picker';
-  pickerStep = 0;
 
   app.innerHTML = `
     <div class="picker-screen">
@@ -596,9 +633,9 @@ function renderPickerDeck() {
       </div>
 
       <div class="picker-footer">
-        <button id="nextBtn" class="icon-btn gold" aria-label="Next">
-          <span class="lottie" id="iconNextDeck"></span>
-          <span class="btn-label">NEXT</span>
+        <button id="startBtn" class="btn-start" aria-label="Start draw">
+          <span class="lottie" id="iconStartDraw"></span>
+          <span class="btn-label">START DRAW</span>
         </button>
       </div>
     </div>
@@ -607,65 +644,10 @@ function renderPickerDeck() {
   const deckWheel = document.getElementById('deckWheel');
   initWheel(deckWheel, currentDeckIdx, idx => { currentDeckIdx = idx; });
 
-  document.getElementById('nextBtn').addEventListener('click', () => {
-    renderPickerCount();
-  });
-  setupPickerLogo();
-  mountPickerControlLotties();
-}
-
-function renderPickerCount() {
-  screen = 'picker';
-  pickerStep = 1;
-
-  const defaultPullIdx = Math.max(0, PULL_OPTIONS.indexOf(pullCount));
-
-  app.innerHTML = `
-    <div class="picker-screen">
-      <div class="logo-wrap">
-        <img id="appLogo" class="picker-logo" src="${appLogoGif}" alt="Tarot" />
-      </div>
-
-      <h1 class="picker-heading">TAROT</h1>
-
-      <div class="picker-single">
-        <div class="picker-label">CARDS</div>
-
-        <div class="wheel-mask wheel-mask-count">
-          <div class="wheel-highlight"></div>
-          <div class="wheel-scroll" id="countWheel">
-            <div class="wheel-pad"></div>
-            ${PULL_OPTIONS.map((n, i) => `
-              <div class="wheel-item wheel-item-count" data-idx="${i}">
-                <span class="wheel-num">${n}</span>
-              </div>
-            `).join('')}
-            <div class="wheel-pad"></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="picker-footer">
-        <button id="backBtn" class="link-btn" aria-label="Back">
-          <span class="lottie" id="iconBackCount"></span>
-          <span class="btn-label">BACK</span>
-        </button>
-        <button id="startBtn" class="btn-start">
-          <span class="lottie" id="iconStartDraw"></span>
-          <span class="btn-label">START DRAW</span>
-        </button>
-      </div>
-    </div>
-  `;
-
-  const countWheel = document.getElementById('countWheel');
-  initWheel(countWheel, defaultPullIdx, idx => { pullCount = PULL_OPTIONS[idx]; });
-
-  document.getElementById('backBtn').addEventListener('click', renderPickerDeck);
-  document.getElementById('startBtn').addEventListener('click', () => {
+  bindButtonAction(document.getElementById('startBtn'), () => {
     fullDeck = DECK_LIST[currentDeckIdx].build();
     doShuffle();
-  });
+  }, 130);
   setupPickerLogo();
   mountPickerControlLotties();
 }
@@ -822,15 +804,15 @@ function doShuffle() {
 function renderGrid() {
   screen = 'grid';
   const picked = drawnCards.length;
-  const remaining = pullCount - picked;
+  const reachedMax = picked >= MAX_GRID_PICK_CARDS;
   const deckInfo = DECK_LIST[currentDeckIdx];
   const backUrl = deckBack(deckInfo.id);
 
   app.innerHTML = `
     <div class="grid-screen">
       <div class="grid-header">
-        <span class="grid-status">Pick ${remaining} card${remaining !== 1 ? 's' : ''}</span>
-        <span class="grid-count">${picked}/${pullCount}</span>
+        <span class="grid-status">${reachedMax ? 'Cards Picked (max)' : 'Cards Picked'}</span>
+        <span class="grid-count">${picked}/${MAX_GRID_PICK_CARDS}</span>
       </div>
 
       <div class="grid-wrap">
@@ -847,21 +829,41 @@ function renderGrid() {
         </div>
       </div>
 
-      <p class="grid-hint">${picked < pullCount ? 'Tap cards to select' : ''}</p>
+      <div class="grid-footer">
+        <p class="grid-hint">${reachedMax ? `Maximum ${MAX_GRID_PICK_CARDS} cards selected` : 'Tap cards to select your spread'}</p>
+        <button id="gridRevealBtn" class="btn-start grid-reveal-btn" ${picked === 0 ? 'disabled' : ''} aria-label="Card reveal">
+          <span class="lottie" id="iconGridReveal"></span>
+          <span class="btn-label">CARD REVEAL</span>
+        </button>
+      </div>
+      <div id="toast" class="toast" aria-live="polite"></div>
     </div>
   `;
 
-  // already done (edge case when returning to grid)
-  if (picked >= pullCount) {
-    setTimeout(renderSpread, 120);
-    return;
+  const statusEl = document.querySelector('.grid-status');
+  const countEl = document.querySelector('.grid-count');
+  const hintEl = document.querySelector('.grid-hint');
+  const revealBtn = document.getElementById('gridRevealBtn');
+  let transitioning = false;
+
+  if (revealBtn) {
+    bindButtonAction(revealBtn, () => {
+      if (transitioning) return;
+      if (drawnCards.length === 0) {
+        showToast('Pick at least 1 card');
+        return;
+      }
+      transitioning = true;
+      renderLoading();
+    }, 130);
   }
 
-  let locked = false;
+  mountLottieInteractive(document.getElementById('iconGridReveal'), ICONS.start_screen.next_arrow_deck_picker, { sizePx: 28, colorHex: '#1d1300' }).catch(() => {});
 
   document.querySelectorAll('.grid-card:not(.picked)').forEach(el => {
     el.addEventListener('click', () => {
-      if (locked) return;
+      if (transitioning) return;
+      if (drawnCards.length >= MAX_GRID_PICK_CARDS) return;
 
       const idx = parseInt(el.dataset.idx, 10);
 
@@ -876,24 +878,17 @@ function renderGrid() {
 
       // update header immediately
       const nowPicked = drawnCards.length;
-      const rem = pullCount - nowPicked;
-      const statusEl = document.querySelector('.grid-status');
-      const countEl = document.querySelector('.grid-count');
-      if (statusEl) statusEl.textContent = `Pick ${rem} card${rem !== 1 ? 's' : ''}`;
-      if (countEl) countEl.textContent = `${nowPicked}/${pullCount}`;
+      const nowMaxed = nowPicked >= MAX_GRID_PICK_CARDS;
+      if (statusEl) statusEl.textContent = nowMaxed ? 'Cards Picked (max)' : 'Cards Picked';
+      if (countEl) countEl.textContent = `${nowPicked}/${MAX_GRID_PICK_CARDS}`;
+      if (hintEl) hintEl.textContent = nowMaxed ? `Maximum ${MAX_GRID_PICK_CARDS} cards selected` : 'Tap cards to select your spread';
+      if (revealBtn) revealBtn.disabled = nowPicked === 0;
 
-      persistSession();
-
-      // after take-away animation, mark as picked & maybe proceed
+      // after take-away animation, mark as picked
       setTimeout(() => {
         el.classList.remove('taking-away');
         el.classList.add('picked');
-
-        if (nowPicked >= pullCount) {
-          locked = true;
-          // auto-proceed after a short beat
-          setTimeout(renderLoading, 220);
-        }
+        persistSession();
       }, CARD_TAKE_AWAY_DURATION_MS);
     });
   });
@@ -1004,20 +999,36 @@ function renderSpread() {
       <div id="toast" class="toast" aria-live="polite"></div>
   `;
 
+  let cardTransitioning = false;
   document.querySelectorAll('.spread-card').forEach(el => {
-    el.addEventListener('click', () => renderCard(parseInt(el.dataset.idx, 10)));
+    el.addEventListener('click', () => {
+      if (cardTransitioning) return;
+      const idx = parseInt(el.dataset.idx, 10);
+      if (Number.isNaN(idx)) return;
+      cardTransitioning = true;
+      triggerTapFeedback(el);
+      setTimeout(() => renderCard(idx), 140);
+    });
   });
 
-  document.getElementById('copySpreadBtn').addEventListener('click', async () => {
-  const ok = await copyTextToClipboard(formatSpreadForCopy());
-  showToast(ok ? 'Copied ✅' : 'Copy failed');
-  });
-  document.getElementById('spreadDetailBtn').addEventListener('click', () => renderCard(0));
-  document.getElementById('spreadHomeBtn').addEventListener('click', renderPicker);
+  bindButtonAction(document.getElementById('copySpreadBtn'), async () => {
+    const ok = await copyTextToClipboard(formatSpreadForCopy());
+    showToast(ok ? 'Copied ✅' : 'Copy failed');
+  }, 110);
 
-  mountLottieInteractive(document.getElementById('iconCopySpread'), ICONS.result_screen.copy_spread, { sizePx: 34, colorHex: '#ffd36a' }).catch(() => {});
-  mountLottieInteractive(document.getElementById('iconSpreadDetail'), ICONS.result_screen.view_details, { sizePx: 34, colorHex: '#ffd36a' }).catch(() => {});
-  mountLottieInteractive(document.getElementById('iconSpreadHome'), ICONS.result_screen.home, { sizePx: 34, colorHex: '#ffd36a' }).catch(() => {});
+  bindButtonAction(document.getElementById('spreadDetailBtn'), () => {
+    renderCard(0);
+  }, 130);
+
+  bindButtonAction(document.getElementById('spreadHomeBtn'), () => {
+    renderPicker();
+  }, 130);
+
+  const spreadIconLastFrameOpts = { sizePx: 34, colorHex: '#ffd36a', restAtEnd: true, playReversed: false };
+  const spreadHomeFirstFrameOpts = { sizePx: 34, colorHex: '#ffd36a', restAtEnd: false, playReversed: false };
+  mountLottieInteractive(document.getElementById('iconCopySpread'), ICONS.result_screen.copy_spread, spreadIconLastFrameOpts).catch(() => {});
+  mountLottieInteractive(document.getElementById('iconSpreadDetail'), ICONS.result_screen.view_details, spreadIconLastFrameOpts).catch(() => {});
+  mountLottieInteractive(document.getElementById('iconSpreadHome'), ICONS.result_screen.home, spreadHomeFirstFrameOpts).catch(() => {});
   syncSpreadCardAspectRatios();
   persistSession();
 }
@@ -1031,7 +1042,7 @@ function renderReveal(lastPickedCard) {
   const deckInfo = DECK_LIST[currentDeckIdx];
   const backUrl = deckBack(deckInfo.id);
 
-  // show up to 3 most recently picked cards (or fewer if pullCount < 3)
+  // show up to 3 most recently picked cards
   const slice = drawnCards.slice(Math.max(0, drawnCards.length - 3));
   const pad = 3 - slice.length;
   const revealCards = [...Array(pad)].map(() => null).concat(slice);
@@ -1097,10 +1108,11 @@ function renderCard(index) {
       </div>
 
       <div class="card-info">
-        <span class="card-name">${card.name}</span>
+        <span class="card-name ${card.reversed ? 'rev' : 'up'}">${card.name}</span>
         <span class="card-orientation ${card.reversed ? 'rev' : 'up'}">${reversedLabel}</span>
 
       </div>
+      <div id="toast" class="toast" aria-live="polite"></div>
 
       <div class="card-nav ${card.reversed ? 'rev' : 'up'}">
         <button id="prevBtn" class="nav-btn ${card.reversed ? 'rev' : 'up'}" ${index === 0 ? 'disabled' : ''} aria-label="Previous card">
@@ -1119,7 +1131,6 @@ function renderCard(index) {
           <span class="lottie nav-lottie" id="iconCardNext"></span>
         </button>
       </div>
-      <div id="toast" class="toast" aria-live="polite"></div>
     </div>
   `;
 
@@ -1139,10 +1150,10 @@ function renderCard(index) {
     }
   }
 
-  document.getElementById('prevBtn').addEventListener('click', () => renderCard(index - 1));
-  document.getElementById('nextBtn').addEventListener('click', () => renderCard(index + 1));
-  document.getElementById('reshuffleBtn').addEventListener('click', doShuffle);
-  document.getElementById('spreadBtn').addEventListener('click', renderSpread);
+  bindButtonAction(document.getElementById('prevBtn'), () => renderCard(index - 1), 110);
+  bindButtonAction(document.getElementById('nextBtn'), () => renderCard(index + 1), 110);
+  bindButtonAction(document.getElementById('reshuffleBtn'), doShuffle, 130);
+  bindButtonAction(document.getElementById('spreadBtn'), renderSpread, 120);
   const cardFrameEl = document.getElementById('cardFrame');
   if (cardFrameEl) {
     cardFrameEl.addEventListener('click', renderSpread);
@@ -1157,7 +1168,7 @@ function renderCard(index) {
   // Copy spread button
 const copyBtn = document.getElementById('copyCardBtn');
 if (copyBtn) {
-  copyBtn.addEventListener('click', async () => {
+  bindButtonAction(copyBtn, async () => {
     const text = formatSingleCardForCopy(viewIndex);
     const ok = await copyTextToClipboard(text);
     showToast(ok ? 'Copied ✅' : 'Copy failed');
@@ -1166,7 +1177,7 @@ if (copyBtn) {
     void copyBtn.offsetWidth;
     copyBtn.classList.add('copy-feedback');
     setTimeout(() => copyBtn.classList.remove('copy-feedback'), 420);
-  });
+  }, 100);
 }
 
   const controlColor = card.reversed ? '#9b5cff' : '#ffd36a';
@@ -1185,7 +1196,6 @@ if (copyBtn) {
 function persistSession() {
   saveSession({
     deckIdx: currentDeckIdx,
-    pullCount,
     drawnCards: drawnCards.map(c => ({
       name: c.name, type: c.type, number: c.number, suit: c.suit,
       image: c.image, reversed: c.reversed, _gridIdx: c._gridIdx
@@ -1208,7 +1218,6 @@ function clickIfExists(id) {
 
 window.addEventListener('sideClick', () => {
   if (screen === 'picker') {
-    if (clickIfExists('nextBtn')) return;
     if (clickIfExists('startBtn')) return;
     return;
   }
@@ -1220,7 +1229,10 @@ window.addEventListener('sideClick', () => {
     doShuffle();
     return;
   }
-  if (screen === 'grid') return;
+  if (screen === 'grid') {
+    clickIfExists('gridRevealBtn');
+    return;
+  }
 });
 
 window.addEventListener('scrollDown', () => {

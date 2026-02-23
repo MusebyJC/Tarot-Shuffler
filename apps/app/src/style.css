@@ -321,6 +321,29 @@ html, body{
   transform: scale(.985);
 }
 
+button.tap-feedback{
+  animation: appButtonTap 290ms cubic-bezier(0.24, 0.78, 0.24, 1);
+}
+
+@keyframes appButtonTap{
+  0%{
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  34%{
+    transform: scale(0.93);
+    filter: brightness(1.08);
+  }
+  68%{
+    transform: scale(1.04);
+    filter: brightness(1.16);
+  }
+  100%{
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+
 .btn-label{
   font-size: clamp(11px, 3vw, 14px);
   font-weight: 900;
@@ -365,6 +388,12 @@ html, body{
     drop-shadow(0 0 8px rgba(255,210,90,0.30));
 }
 
+#iconGridReveal{
+  filter:
+    drop-shadow(0 0 5px rgba(255,248,220,0.58))
+    drop-shadow(0 0 10px rgba(255,210,90,0.36));
+}
+
 .picker-footer #nextBtn .lottie svg [stroke]:not([stroke="none"]),
 .picker-footer #nextBtn .lottie svg [fill]:not([fill="none"]){
   stroke: #ffd36a !important;
@@ -379,6 +408,12 @@ html, body{
 
 #startBtn .lottie svg [stroke]:not([stroke="none"]),
 #startBtn .lottie svg [fill]:not([fill="none"]){
+  stroke: #1d1300 !important;
+  fill: #1d1300 !important;
+}
+
+#gridRevealBtn .lottie svg [stroke]:not([stroke="none"]),
+#gridRevealBtn .lottie svg [fill]:not([fill="none"]){
   stroke: #1d1300 !important;
   fill: #1d1300 !important;
 }
@@ -694,9 +729,36 @@ html, body{
 
 .grid-hint {
   font-size: clamp(12px, 3vw, 16px);
-  color: #666;
-  padding: 1vh 0;
+  color: #c7b8dd;
+  padding: 0;
+  margin: 0;
   flex-shrink: 0;
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+
+.grid-footer{
+  width: min(96vw, 560px);
+  display: flex;
+  flex-direction: column;
+  gap: 1.2vh;
+  align-items: center;
+  padding: 0.8vh 0 calc(0.8vh + env(safe-area-inset-bottom));
+}
+
+.grid-reveal-btn{
+  width: 100%;
+  min-height: clamp(48px, 7.8vh, 62px);
+  justify-content: center;
+}
+
+.grid-reveal-btn:disabled{
+  opacity: 0.52;
+  cursor: default;
+  filter: saturate(0.75);
+  box-shadow:
+    0 6px 14px rgba(0,0,0,.32),
+    0 0 6px rgba(255,210,90,.15);
 }
 
 .loading-screen{
@@ -780,16 +842,16 @@ html, body{
   align-items:center;
   justify-items: center;
   gap: clamp(10px, 3.6vw, 24px);
-  padding: 1vh 0 calc(1.5vh + env(safe-area-inset-bottom));
+  padding: 0.8vh 0 calc(1.4vh + env(safe-area-inset-bottom));
   position: sticky;
   bottom: 0;
   background: linear-gradient(
     to top,
-    rgba(22, 10, 40, 0.90) 8%,
-    rgba(22, 10, 40, 0.58) 72%,
+    rgba(19, 11, 33, 0.82) 10%,
+    rgba(19, 11, 33, 0.44) 66%,
     rgba(22, 10, 40, 0.00) 100%
   );
-  backdrop-filter: blur(1.5px);
+  backdrop-filter: blur(5px);
 }
 
 .spread-header {
@@ -841,10 +903,20 @@ html, body{
   justify-content: center;
 }
 
-.spread-row.cols-1{ grid-template-columns: minmax(0, 1fr); max-width: 62vw; margin: 0 auto; }
-.spread-row.cols-2{ grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 92vw; margin: 0 auto; }
-.spread-row.cols-3{ grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.spread-row.cols-4{ grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.spread-area.single .spread-row.cols-1{ grid-template-columns: minmax(0, 1fr); max-width: 62vw; margin: 0 auto; }
+.spread-area.single .spread-row.cols-2{ grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 92vw; margin: 0 auto; }
+.spread-area.single .spread-row.cols-3{ grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.spread-area.single .spread-row.cols-4{ grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+/* In scrolling spreads, all rows must use full width so 5/9/13/17 last-row cards stay same size. */
+.spread-area.scrolling .spread-row.cols-1,
+.spread-area.scrolling .spread-row.cols-2,
+.spread-area.scrolling .spread-row.cols-3,
+.spread-area.scrolling .spread-row.cols-4{
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
 
 .spread-card{
   aspect-ratio: 2 / 3;
@@ -855,6 +927,9 @@ html, body{
   display:flex;
   align-items:center;
   justify-content:center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform .16s ease, filter .20s ease, box-shadow .22s ease;
 
   border: 1.5px solid var(--gold);
   box-shadow:
@@ -862,6 +937,33 @@ html, body{
     0 0 10px var(--goldGlow1),
     0 0 18px var(--goldGlow2),
     0 0 2px rgba(255, 241, 176, 0.55) inset;
+}
+
+.spread-card:active{
+  transform: scale(0.97);
+}
+
+.spread-card.tap-feedback{
+  animation: spreadCardTap 300ms cubic-bezier(0.24, 0.78, 0.24, 1);
+}
+
+@keyframes spreadCardTap{
+  0%{
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  38%{
+    transform: scale(0.955);
+    filter: brightness(1.16);
+  }
+  72%{
+    transform: scale(1.03);
+    filter: brightness(1.08);
+  }
+  100%{
+    transform: scale(1);
+    filter: brightness(1);
+  }
 }
 
 .spread-area.scrolling .spread-card{
@@ -934,9 +1036,9 @@ html, body{
   display: flex;
   flex-direction: column;
   align-items: center;
+  position: relative;
   height: 100dvh;
   width: 100vw;
-  --card-info-gap: clamp(10px, 1.8vh, 18px);
   padding:
     calc(1.5vh + env(safe-area-inset-top))
     4vw
@@ -1057,20 +1159,62 @@ html, body{
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: clamp(54px, 8.5vh, 78px);
+  flex: 1 1 auto;
+  min-height: 0;
   gap: clamp(4px, 0.9vh, 10px);
-  margin-top: var(--card-info-gap);
-  margin-bottom: var(--card-info-gap);
-  flex-shrink: 0;
+  margin: 0;
+  flex-shrink: 1;
 }
 
 .card-name {
-  font-size: clamp(16px, 4.5vw, 22px);
-  font-weight: 600;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  max-width: min(94vw, 640px);
+  padding: clamp(4px, 0.9vh, 9px) clamp(14px, 4.2vw, 30px);
+  border-radius: 999px;
+  border: 1px solid rgba(255, 224, 152, 0.38);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(255, 235, 185, 0.16), rgba(255, 235, 185, 0) 62%),
+    linear-gradient(180deg, rgba(255, 233, 190, 0.06), rgba(255, 233, 190, 0.02));
+  font-family: "Cinzel", "Cormorant Garamond", "Times New Roman", serif;
+  font-size: clamp(18px, 4.9vw, 28px);
+  font-weight: 700;
+  letter-spacing: 0.045em;
   text-align: center;
-  color: #f0e6d0;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  color: #f7ebcf;
+  text-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.58),
+    0 0 10px rgba(255, 214, 130, 0.34);
   line-height: 1.2;
+  box-shadow:
+    0 0 10px rgba(0, 0, 0, 0.26),
+    0 0 12px rgba(255, 205, 112, 0.20),
+    0 0 1px rgba(255, 245, 216, 0.24) inset;
+}
+
+.card-name.up{
+  border-color: rgba(255, 224, 152, 0.42);
+  color: #f7ebcf;
+  text-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.58),
+    0 0 10px rgba(255, 214, 130, 0.34);
+}
+
+.card-name.rev{
+  border-color: rgba(200, 165, 255, 0.44);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(212, 173, 255, 0.17), rgba(212, 173, 255, 0) 62%),
+    linear-gradient(180deg, rgba(214, 181, 255, 0.07), rgba(214, 181, 255, 0.03));
+  color: #efe3ff;
+  text-shadow:
+    0 1px 3px rgba(31, 17, 52, 0.62),
+    0 0 10px rgba(173, 119, 255, 0.38);
+  box-shadow:
+    0 0 10px rgba(0, 0, 0, 0.26),
+    0 0 12px rgba(165, 109, 255, 0.24),
+    0 0 1px rgba(238, 219, 255, 0.24) inset;
 }
 
 .card-orientation{
@@ -1173,6 +1317,16 @@ html, body{
   flex-shrink: 0;
 }
 
+.card-view > .toast{
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(96vw, 680px);
+  text-align: center;
+  pointer-events: none;
+  bottom: calc(72px + env(safe-area-inset-bottom));
+}
+
 .card-nav .nav-btn{
   width: min(100%, 66px);
   height: auto;
@@ -1257,21 +1411,36 @@ html, body{
 }
 
 .spread-actions .nav-btn{
-  width: min(100%, 84px);
-  min-width: 66px;
-  min-height: 66px;
-  border-color: rgba(155,92,255,0.78);
-  background: linear-gradient(150deg, rgba(80,40,132,0.92), rgba(43,20,75,0.94));
+  width: min(100%, 66px);
+  height: auto;
+  aspect-ratio: 1 / 1;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: var(--controlRadius);
+  border: 1.5px solid rgba(212,175,55,0.55);
+  background: rgba(212,175,55,0.10);
+  color: #d4af37;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  padding: 0;
+  line-height: 1;
   box-shadow:
-    0 0 14px rgba(0,0,0,0.35),
-    0 0 16px rgba(155,92,255,0.45),
-    0 0 26px rgba(93,43,255,0.28),
-    0 0 2px rgba(210,182,255,0.28) inset;
+    0 0 12px rgba(0,0,0,0.35),
+    0 0 10px var(--goldGlow1),
+    0 0 18px rgba(255,170,0,0.22);
+  transition: transform .16s ease, box-shadow .22s ease, filter .22s ease;
+}
+
+.spread-actions .nav-btn:active{
+  transform: scale(0.985);
 }
 
 .spread-actions .nav-lottie{
-  width: clamp(28px, 8.5vw, 38px);
-  height: clamp(28px, 8.5vw, 38px);
+  width: clamp(24px, 7.2vw, 34px);
+  height: clamp(24px, 7.2vw, 34px);
 }
 
 .card-nav .nav-lottie{
