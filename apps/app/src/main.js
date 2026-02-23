@@ -1156,11 +1156,21 @@ function renderCard(index) {
   bindButtonAction(document.getElementById('spreadBtn'), renderSpread, 120);
   const cardFrameEl = document.getElementById('cardFrame');
   if (cardFrameEl) {
-    cardFrameEl.addEventListener('click', renderSpread);
+    let frameBusy = false;
+    const goBackToSpread = () => {
+      if (frameBusy) return;
+      frameBusy = true;
+      triggerTapFeedback(cardFrameEl);
+      setTimeout(() => {
+        renderSpread();
+      }, 130);
+    };
+
+    cardFrameEl.addEventListener('click', goBackToSpread);
     cardFrameEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' || e.key === ' ') {
         e.preventDefault();
-        renderSpread();
+        goBackToSpread();
       }
     });
   }
