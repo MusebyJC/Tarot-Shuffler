@@ -811,6 +811,50 @@ button.tap-feedback{
   position: relative;
   z-index: 1;
   display: block;
+  opacity: 1;
+  transition: opacity .22s ease, filter .22s ease;
+}
+
+.loading-gif.is-loading{
+  opacity: 0.18;
+  filter: saturate(0.84) brightness(0.94);
+}
+
+.loading-gif.is-hidden{
+  opacity: 0;
+}
+
+.loading-fallback{
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(40px, 14vw, 76px);
+  color: rgba(255, 224, 150, 0.86);
+  text-shadow:
+    0 0 10px rgba(255, 216, 120, 0.42),
+    0 0 20px rgba(155, 92, 255, 0.48);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .22s ease;
+}
+
+.loading-fallback.show{
+  opacity: 1;
+  animation: loadingFallbackPulse 1.6s ease-in-out infinite;
+}
+
+@keyframes loadingFallbackPulse{
+  0%, 100%{
+    transform: scale(0.95);
+    filter: brightness(0.95);
+  }
+  50%{
+    transform: scale(1.05);
+    filter: brightness(1.15);
+  }
 }
 
 .loading-label{

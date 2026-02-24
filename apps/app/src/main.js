@@ -12,7 +12,10 @@ import appLogoGif from './assets/animation/app_logo/22 - Magic Crystal Ball.gif?
 import startLottieUrl from './assets/animation/screen_control/start_screen/start_draw_button/Start_lottie.json?url';
 
 // Loading gifs (random)
-const LOADING_GIFS = import.meta.glob('./assets/animation/loading/*.gif', { eager: true, query: '?url', import: 'default' });
+const LOADING_GIFS = import.meta.glob('./assets/animation/loading/*.{gif,GIF}', { eager: true, query: '?url', import: 'default' });
+const LOADING_GIF_URLS = Object.values(LOADING_GIFS).filter(
+  (url) => typeof url === 'string' && url.length > 0
+);
 const CARD_TAKE_AWAY_DURATION_MS = 460;
 const LOADING_SCREEN_DURATION_MS = 2400;
 const MAX_GRID_PICK_CARDS = 20;
@@ -138,9 +141,38 @@ async function mountLottieInteractive(
   return anim;
 }
 
-function randomLoadingGif() {
-  const urls = Object.values(LOADING_GIFS);
-  return urls[Math.floor(Math.random() * urls.length)];
+function pickLoadingGifCandidates(limit = 6) {
+  const urls = [...LOADING_GIF_URLS];
+  for (let i = urls.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [urls[i], urls[j]] = [urls[j], urls[i]];
+  }
+  return urls.slice(0, Math.max(1, Math.min(limit, urls.length)));
+}
+
+function loadGifWithGuard(imgEl, url, timeoutMs = 1500) {
+  return new Promise((resolve) => {
+    if (!imgEl || !url) {
+      resolve(false);
+      return;
+    }
+
+    let settled = false;
+    const done = (ok) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      imgEl.onload = null;
+      imgEl.onerror = null;
+      resolve(ok);
+    };
+
+    imgEl.onload = () => done(true);
+    imgEl.onerror = () => done(false);
+
+    const timeoutId = setTimeout(() => done(false), timeoutMs);
+    imgEl.src = url;
+  });
 }
 
 let logoStillFrameDataUrl = null;
@@ -898,15 +930,50 @@ function renderLoading() {
   screen = 'loading';
   clearTimeout(loadingTimer);
 
-  const loadingGif = randomLoadingGif();
   app.innerHTML = `
     <div class="loading-screen">
       <div class="loading-wrap">
-        <img class="loading-gif" src="${loadingGif}" alt="Loading animation" />
+        <img class="loading-gif is-loading" id="loadingGif" src="" alt="Loading animation" decoding="async" />
+        <div class="loading-fallback" id="loadingFallback" aria-hidden="true">✦</div>
       </div>
       <p class="loading-label">Revealing your spread...</p>
     </div>
   `;
+
+  const loadingGifEl = document.getElementById('loadingGif');
+  const loadingFallbackEl = document.getElementById('loadingFallback');
+  const candidates = pickLoadingGifCandidates(6);
+  loadingFallbackEl?.classList.add('show');
+
+  if (loadingGifEl && candidates.length) {
+    loadingGifEl.decoding = 'async';
+
+    void (async () => {
+      let loaded = false;
+
+      for (const gifUrl of candidates) {
+        if (screen !== 'loading') return;
+        const ok = await loadGifWithGuard(loadingGifEl, gifUrl, 1500);
+        if (ok) {
+          loaded = true;
+          break;
+        }
+      }
+
+      if (screen !== 'loading') return;
+
+      if (loaded) {
+        loadingGifEl.classList.remove('is-loading', 'is-hidden');
+        loadingFallbackEl?.classList.remove('show');
+      } else {
+        loadingGifEl.classList.remove('is-loading');
+        loadingGifEl.classList.add('is-hidden');
+        loadingFallbackEl?.classList.add('show');
+      }
+    })();
+  } else {
+    loadingFallbackEl?.classList.add('show');
+  }
 
   loadingTimer = setTimeout(() => {
     if (screen === 'loading') renderSpread();
