@@ -19,6 +19,8 @@ const LOADING_GIF_URLS = Object.values(LOADING_GIFS).filter(
 const CARD_TAKE_AWAY_DURATION_MS = 460;
 const LOADING_SCREEN_DURATION_MS = 2400;
 const MAX_GRID_PICK_CARDS = 20;
+const SHUFFLE_BACK_PRELOAD_MIN_DELAY_MS = 140;
+const SHUFFLE_BACK_PRELOAD_TIMEOUT_MS = 550;
 
 // Screen control Lotties
 const ICONS = {
@@ -141,13 +143,86 @@ async function mountLottieInteractive(
   return anim;
 }
 
-function pickLoadingGifCandidates(limit = 6) {
-  const urls = [...LOADING_GIF_URLS];
-  for (let i = urls.length - 1; i > 0; i--) {
+const loadingGifWarmStatus = new Map();
+
+function shuffledCopy(list) {
+  const arr = [...list];
+  for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
-    [urls[i], urls[j]] = [urls[j], urls[i]];
+    [arr[i], arr[j]] = [arr[j], arr[i]];
   }
-  return urls.slice(0, Math.max(1, Math.min(limit, urls.length)));
+  return arr;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function preloadImageUrl(url, timeoutMs = 1500) {
+  return new Promise((resolve) => {
+    if (!url) {
+      resolve(false);
+      return;
+    }
+
+    const img = new Image();
+    let settled = false;
+    const done = (ok) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      img.onload = null;
+      img.onerror = null;
+      resolve(ok);
+    };
+
+    img.onload = () => done(true);
+    img.onerror = () => done(false);
+
+    const timeoutId = setTimeout(() => done(false), timeoutMs);
+    img.decoding = 'async';
+    img.src = url;
+  });
+}
+
+function prewarmLoadingGifs(limit = 8) {
+  const candidates = shuffledCopy(LOADING_GIF_URLS);
+  let queued = 0;
+
+  for (const url of candidates) {
+    if (queued >= limit) break;
+
+    const status = loadingGifWarmStatus.get(url);
+    if (status === 'loaded' || status === 'pending') continue;
+
+    queued += 1;
+    loadingGifWarmStatus.set(url, 'pending');
+
+    void preloadImageUrl(url, 5000).then((ok) => {
+      loadingGifWarmStatus.set(url, ok ? 'loaded' : 'failed');
+    });
+  }
+}
+
+function pickLoadingGifCandidates(limit = 6) {
+  const loaded = [];
+  const fresh = [];
+  const failed = [];
+
+  for (const url of LOADING_GIF_URLS) {
+    const status = loadingGifWarmStatus.get(url);
+    if (status === 'loaded') loaded.push(url);
+    else if (status === 'failed') failed.push(url);
+    else fresh.push(url);
+  }
+
+  const prioritized = [
+    ...shuffledCopy(loaded),
+    ...shuffledCopy(fresh),
+    ...shuffledCopy(failed),
+  ];
+
+  return prioritized.slice(0, Math.max(1, Math.min(limit, prioritized.length)));
 }
 
 function loadGifWithGuard(imgEl, url, timeoutMs = 1500) {
@@ -500,7 +575,8 @@ let fullDeck = [];
 let shuffledDeck = [];
 let drawnCards = [];
 let viewIndex = 0;
-let screen = 'picker'; // picker | grid | loading | spread | card
+let screen = 'picker'; // picker | shuffling | grid | loading | spread | card
+let shuffleRunId = 0;
 
 const app = document.getElementById('app');
 
@@ -803,19 +879,31 @@ function initWheel(el, defaultIdx, onChange) {
 // ------------------------------------------------------------
 // SHUFFLE ANIMATION
 // ------------------------------------------------------------
-function doShuffle() {
+async function doShuffle() {
   clearTimeout(loadingTimer);
+  const runId = ++shuffleRunId;
+
   const deckInfo = DECK_LIST[currentDeckIdx];
   const backUrl = deckBack(deckInfo.id);
 
   shuffledDeck = shuffleDeck(fullDeck);
   drawnCards = [];
   viewIndex = 0;
+  prewarmLoadingGifs(10);
+
+  if (backUrl) {
+    await Promise.all([
+      sleep(SHUFFLE_BACK_PRELOAD_MIN_DELAY_MS),
+      preloadImageUrl(backUrl, SHUFFLE_BACK_PRELOAD_TIMEOUT_MS),
+    ]);
+    if (runId !== shuffleRunId) return;
+  }
 
   const style = backUrl
     ? `style="background-image:url('${backUrl}'); background-size:cover; background-position:center; background-repeat:no-repeat;"`
     : '';
 
+  screen = 'shuffling';
   app.innerHTML = `
     <div class="shuffling">
       <div class="shuffle-cards">
@@ -827,7 +915,10 @@ function doShuffle() {
       </div>
     </div>
   `;
-  setTimeout(() => renderGrid(), 1400);
+  setTimeout(() => {
+    if (runId !== shuffleRunId) return;
+    if (screen === 'shuffling') renderGrid();
+  }, 1400);
 }
 
 // ------------------------------------------------------------
@@ -835,6 +926,8 @@ function doShuffle() {
 // ------------------------------------------------------------
 function renderGrid() {
   screen = 'grid';
+  prewarmLoadingGifs(10);
+
   const picked = drawnCards.length;
   const reachedMax = picked >= MAX_GRID_PICK_CARDS;
   const deckInfo = DECK_LIST[currentDeckIdx];
@@ -915,6 +1008,7 @@ function renderGrid() {
       if (countEl) countEl.textContent = `${nowPicked}/${MAX_GRID_PICK_CARDS}`;
       if (hintEl) hintEl.textContent = nowMaxed ? `Maximum ${MAX_GRID_PICK_CARDS} cards selected` : 'Tap cards to select your spread';
       if (revealBtn) revealBtn.disabled = nowPicked === 0;
+      prewarmLoadingGifs(3);
 
       // after take-away animation, mark as picked
       setTimeout(() => {
