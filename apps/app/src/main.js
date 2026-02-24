@@ -36,7 +36,7 @@ const SHUFFLE_BACK_GUARD_MAX_MS = 900;
 const SHUFFLE_BACK_GUARD_FACTOR = 0.35;
 const BUTTON_JSON_CLICK_DELAY_MS = 520;
 const PICKER_WHEEL_ICON_REST_DELAY_MS = 180;
-const SPREAD_CENTER_FIT_TOLERANCE_PX = 72;
+const SPREAD_CENTER_FIT_TOLERANCE_PX = 20;
 
 // Screen control Lotties
 const ICONS = {
@@ -1418,23 +1418,38 @@ function applySpreadVerticalCentering() {
     return rect.height + marginTop + marginBottom;
   };
 
-  const headerEl = spreadScreenEl.querySelector('.spread-header');
-  const actionsEl = spreadScreenEl.querySelector('.spread-actions');
-  const headerOuterH = getOuterHeight(headerEl);
-  const actionsOuterH = getOuterHeight(actionsEl);
-  const centerOffsetPx = Math.round((actionsOuterH - headerOuterH) / 2);
+  const children = Array.from(spreadScreenEl.children);
+  const areaIndex = children.indexOf(spreadAreaEl);
+  let topOccupiedH = 0;
+  let bottomOccupiedH = 0;
 
-  // reset any inline offset styles before measuring
-  spreadAreaEl.style.setProperty('--spread-fit-center-offset', '0px');
-  const overflowPx = spreadAreaEl.scrollHeight - spreadAreaEl.clientHeight;
-  const fitsWithoutScroll = overflowPx <= SPREAD_CENTER_FIT_TOLERANCE_PX;
-  const forceCenter = spreadAreaEl.dataset.forceCenter === '1';
-  const shouldCenter = forceCenter || fitsWithoutScroll;
-  spreadAreaEl.classList.toggle('fit-centered', shouldCenter);
-  if (shouldCenter) {
-    spreadAreaEl.style.setProperty('--spread-fit-center-offset', `${centerOffsetPx}px`);
-    if (overflowPx <= 2) spreadAreaEl.scrollTop = 0;
-  }
+  children.forEach((child, idx) => {
+    if (child === spreadAreaEl) return;
+    if (child.classList && child.classList.contains('toast')) return;
+    const pos = window.getComputedStyle(child).position;
+    if (pos === 'absolute' || pos === 'fixed') return;
+    const h = getOuterHeight(child);
+    if (idx < areaIndex) topOccupiedH += h;
+    else bottomOccupiedH += h;
+  });
+
+  const centerOffsetPx = Math.round((bottomOccupiedH - topOccupiedH) / 2);
+
+  const cs = window.getComputedStyle(spreadAreaEl);
+  const basePadTop = parseFloat(cs.paddingTop || '0') || 0;
+  const basePadBottom = parseFloat(cs.paddingBottom || '0') || 0;
+  const rowGap = parseFloat(cs.rowGap || cs.gap || '0') || 0;
+  const rowEls = Array.from(spreadAreaEl.children).filter((el) =>
+    el.classList && el.classList.contains('spread-row')
+  );
+  const rowsHeight = rowEls.reduce((sum, rowEl) => sum + rowEl.getBoundingClientRect().height, 0);
+  const contentHeight = rowsHeight + Math.max(0, rowEls.length - 1) * rowGap;
+  const innerHeight = Math.max(0, spreadAreaEl.clientHeight - basePadTop - basePadBottom);
+  const fitsWithoutScroll = contentHeight <= (innerHeight + SPREAD_CENTER_FIT_TOLERANCE_PX);
+
+  spreadAreaEl.classList.toggle('fit-centered', fitsWithoutScroll);
+  spreadAreaEl.style.setProperty('--spread-fit-center-offset', fitsWithoutScroll ? `${centerOffsetPx}px` : '0px');
+  if (fitsWithoutScroll) spreadAreaEl.scrollTop = 0;
 }
 
 function queueSpreadVerticalCentering() {
@@ -1488,7 +1503,6 @@ function renderSpread() {
   const deckInfo = DECK_LIST[currentDeckIdx];
   const n = drawnCards.length;
   const rows = chunkIntoRows(drawnCards);
-  const forceCenter = n >= 5 && n <= 7;
 
   const areaClass = n <= 4 ? 'spread-area single' : 'spread-area scrolling';
 
@@ -1498,7 +1512,7 @@ function renderSpread() {
         <span class="spread-title">${deckInfo.name} · ${n}-Card Spread</span>
       </div>
 
-      <div class="${areaClass}" data-force-center="${forceCenter ? '1' : '0'}">
+      <div class="${areaClass}">
         ${rows.map((row) => `
           <div class="spread-row cols-${row.cols}">
             ${row.cards.map((card) => {
